@@ -4,3 +4,4 @@
 *.png
 *.jpg
 .env
+__pycache__/
