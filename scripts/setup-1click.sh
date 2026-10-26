@@ -4,11 +4,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTEMIS_DIR="${REPO_ROOT}/artemis"
 PATCH_DIR="${REPO_ROOT}/scripts/patches"
+BLENDER_MCP_DIR="${REPO_ROOT}/tools/blender_mcp"
 SDK_ROOT="/tmp/android-sdk"
 AVD_HOME="/tmp/android-avd"
 
 echo "========================================================"
-echo "🚀 [1/6] Cài đặt công cụ hệ thống (uv, ffmpeg, scrcpy, JDK 17)..."
+echo "🚀 [1/6] Cài đặt công cụ hệ thống (uv, ffmpeg, scrcpy, JDK 17, Blender 4.0, Xvfb, gltf-transform)..."
 echo "========================================================"
 export PATH="${HOME}/.local/bin:${SDK_ROOT}/platform-tools:${SDK_ROOT}/emulator:${PATH}"
 mkdir -p "${HOME}/.local/bin"
@@ -17,9 +18,15 @@ if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
-if ! command -v scrcpy >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1 || ! command -v java >/dev/null 2>&1; then
+if ! command -v scrcpy >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1 || ! command -v java >/dev/null 2>&1 || ! command -v blender >/dev/null 2>&1 || ! command -v xvfb-run >/dev/null 2>&1; then
   sudo apt-get update -qq
-  sudo apt-get install -y -qq ffmpeg scrcpy openjdk-17-jdk-headless unzip wget curl gcc libc6-dev
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    ffmpeg scrcpy openjdk-17-jdk-headless unzip wget curl gcc libc6-dev \
+    blender xvfb python3-numpy libgl1-mesa-dri libegl1 libgbm1
+fi
+
+if ! command -v gltf-transform >/dev/null 2>&1; then
+  npm install -g @gltf-transform/cli --no-audit --no-fund
 fi
 
 echo "========================================================"
@@ -130,7 +137,7 @@ ln -sf "${SDK_ROOT}/platform-tools/adb" "${HOME}/.local/bin/adb"
 ln -sf "${SDK_ROOT}/emulator/emulator" "${HOME}/.local/bin/emulator"
 
 echo "========================================================"
-echo "⚙️ [6/6] Cấu hình .env và MCP Server cho AGY / VS Code..."
+echo "⚙️ [6/6] Cấu hình .env và MCP Servers (artemis + blender_3d)..."
 echo "========================================================"
 ENV_FILE="${ARTEMIS_DIR}/.env"
 if [ ! -f "${ENV_FILE}" ]; then
@@ -158,10 +165,18 @@ for MCP_DIR in "${HOME}/.gemini/config" "${HOME}/.gemini/jetski"; do
         "ANDROID_AVD_HOME": "/tmp/android-avd",
         "ARTEMIS_KEEP_DEVICE_AWAKE": "false"
       }
+    },
+    "blender_3d": {
+      "command": "${ARTEMIS_DIR}/.venv/bin/python",
+      "args": ["${BLENDER_MCP_DIR}/server.py"],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "PATH": "${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      }
     }
   }
 }
 EOF
 done
 
-echo "✅ Hoàn tất cài đặt 1-Click! Chạy 'bash scripts/start-all.sh' để khởi động Daemon & Emulator."
+echo "✅ Hoàn tất cài đặt 1-Click (ARTEMIS + Android Emulator + Blender 3D MCP)!"
