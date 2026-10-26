@@ -22,7 +22,7 @@ if ! command -v scrcpy >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1 ||
   sudo apt-get update -qq
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     ffmpeg scrcpy openjdk-17-jdk-headless unzip wget curl gcc libc6-dev \
-    blender xvfb python3-numpy libgl1-mesa-dri libegl1 libgbm1
+    blender xvfb python3-numpy python3-pil libgl1-mesa-dri libegl1 libgbm1
 fi
 
 if ! command -v gltf-transform >/dev/null 2>&1; then
