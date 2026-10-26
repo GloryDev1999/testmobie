@@ -1,0 +1,6 @@
+# Ignore cloned artemis repo & runtime artifacts (rebuilt automatically via setup-1click.sh)
+/artemis/
+*.log
+*.png
+*.jpg
+.env

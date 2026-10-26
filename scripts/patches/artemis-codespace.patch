@@ -1,0 +1,151 @@
+diff --git a/apps/admin_console/services/device_stream_service.py b/apps/admin_console/services/device_stream_service.py
+index 6455a3e..1ef2a3c 100644
+--- a/apps/admin_console/services/device_stream_service.py
++++ b/apps/admin_console/services/device_stream_service.py
+@@ -84,7 +84,7 @@ class DeviceStreamService:
+                     self._last_frame_time = time.time()
+ 
+                 elapsed = time.time() - start_t
+-                delay = max(0.03, 0.08 - elapsed)
++                delay = max(1.5, 2.0 - elapsed)
+                 await asyncio.sleep(delay)
+             except asyncio.CancelledError:
+                 break
+diff --git a/artemis/agents/flash/summarizer.py b/artemis/agents/flash/summarizer.py
+index 5b8a3cf..104c289 100644
+--- a/artemis/agents/flash/summarizer.py
++++ b/artemis/agents/flash/summarizer.py
+@@ -168,7 +168,7 @@ class VisualStepSummarizer(StepMemoryService):
+             if model_name:
+                 self._llm = get_google_llm(model_name=target_model, temperature=0.0)
+             else:
+-                self._llm = get_llm(ctx, name="summarizer", is_utils=True)
++                self._llm = get_llm(ctx, name="summarizer", is_utils=False)
+         except Exception:
+             self._llm = get_google_llm(model_name=target_model, temperature=0.0)
+         try:
+diff --git a/artemis/runtime/awake_service.py b/artemis/runtime/awake_service.py
+index fc29ae3..a1bccea 100644
+--- a/artemis/runtime/awake_service.py
++++ b/artemis/runtime/awake_service.py
+@@ -38,8 +38,8 @@ DEVICE_DISCOVERY_INTERVAL_SECONDS = 2.0
+ 
+ 
+ def _awake_enabled() -> bool:
+-    enabled = os.environ.get("ARTEMIS_KEEP_DEVICE_AWAKE", "true").strip().lower()
+-    return enabled not in {"0", "false", "no", "off"}
++    enabled = os.environ.get("ARTEMIS_KEEP_DEVICE_AWAKE", "false").strip().lower()
++    return enabled in {"1", "true", "yes", "on"}
+ 
+ 
+ def _run_awake_adb_command(
+@@ -92,8 +92,8 @@ def _configure_usb_stay_awake(device_id: str) -> str | None:
+     power is removed, even though no ADB command can be sent after unplugging.
+     AC, wireless, and dock charging retain the user's normal behavior.
+     """
+-    if not _awake_enabled() or os.environ.get("ARTEMIS_CLOUD_MODE") == "1":
+-        return None
++    if not _awake_enabled() or os.environ.get("ARTEMIS_CLOUD_MODE") == "1" or str(device_id).startswith("emulator-"):
++        return AWAKE_STRATEGY_USB
+ 
+     # Migration cleanup: previous Artemis versions used a persistent shell
+     # wake lock. Drain it only after every live legacy owner has exited.
+diff --git a/config/artemis.jsonc b/config/artemis.jsonc
+index 517d738..c9e4713 100644
+--- a/config/artemis.jsonc
++++ b/config/artemis.jsonc
+@@ -7,13 +7,11 @@
+   // 1. Global Default Model (Applied to all sub-agents unless overridden below)
+   // ------------------------------------------------------------------------------
+   "default": {
+-    "provider": "google",
+-    "model": "gemini-3.8-flash",
+-    "thinking_level": "medium",
++    "provider": "openai",
++    "model": "qwen/qwen3.8-max:free",
+     "fallback": {
+-      "provider": "google",
+-      "model": "gemini-3.7-flash",
+-      "thinking_level": "medium"
++      "provider": "openai",
++      "model": "qwen/qwen3.8-max:free"
+     }
+   },
+ 
+@@ -74,13 +72,7 @@
+     // CRITICAL REQUIREMENT: Standard LLMs (including standard Gemini Flash, GPT-4o, Claude 3.7) lack sub-pixel spatial coordinate fine-tuning.
+     // To achieve accurate [x, y] point and bounding box localization, this node MUST use specialized Gemini ER (Embodied Reasoning / Robotics) models:
+     // e.g., "gemini-robotics-er-2-preview". Non-ER models will fail spatial coordinate detection.
+-    "object_detector": {
+-      "model": "gemini-robotics-er-2-preview",
+-      "fallback": {
+-        "provider": "google",
+-        "model": "gemini-robotics-er-2-preview"
+-      }
+-    },
++    "object_detector": {},
+ 
+     // 🔍 Explorer: Deep element grounding and multi-candidate visual search
+     // NOTE:
+@@ -94,25 +86,19 @@
+     "summarizer": {},
+ 
+     // 🔽 Hopper: Fast lightweight package name locator
+-    "hopper": {
+-      "model": "gemini-3.5-flash-lite",
+-      "fallback": {
+-        "provider": "google",
+-        "model": "gemini-3.1-flash-lite"
+-      }
+-    },
++    "hopper": {},
+ 
+     // 📝 Outputter: Synthesizes execution trace into final output report
+     "outputter": {},
+ 
+     // 🪵 Log Analyzer: Error log diagnosis with search grounding
+     "log_analyzer": {
+-      "enable_grounding": true
++      "enable_grounding": false
+     },
+ 
+     // 🩺 Diagnoser Expert: Failure root cause diagnosis with search grounding
+     "diagnoser_expert": {
+-      "enable_grounding": true
++      "enable_grounding": false
+     },
+     // 🏛️ Committee Council Members
+     "planner_avatar": {},
+@@ -144,8 +130,8 @@
+       // Summarizes intermediate steps in background without blocking the runner,
+       // replacing images only after strictly objective, high-density summaries are ready.
+       "step_summarizer": {
+-        "enabled": true, // Whether background step summarization is active
+-        "model": "gemini-3.5-flash-lite", // Lightweight model for fast background inference
++        "enabled": false, // Whether background step summarization is active
++        "model": "", // Empty string uses default summarizer provider (OpenAI/custom)
+         "prune_history_xml": true // Prune outdated heavy XML trees from historical steps
+       }
+     },
+@@ -185,8 +171,8 @@
+       },
+       // 🎬 Video Analyzer & Screen Recording: Continuous screen recording via scrcpy and temporal analysis
+       "video_analyzer": {
+-        "enabled": true, // Whether continuous video recording and video tools are active (default: auto-detected)
+-        "enable_ledger": true
++        "enabled": false, // Disabled on headless software-GPU emulator to prevent MediaCodec crash
++        "enable_ledger": false
+       }
+     },
+     // ==========================================================================
+@@ -265,8 +251,8 @@
+     },
+     // 🎬 Screen Recording & Video Analyzer Configuration
+     "video_analyzer": {
+-      "enabled": true, // Whether continuous screen recording via scrcpy is active (default: auto-detected)
+-      "enable_ledger": true
++      "enabled": false, // Disabled on headless software-GPU emulator to prevent MediaCodec crash
++      "enable_ledger": false
+       // "processing": "auto", // How Gemini sub-agents watch a clip: auto (agentic on Gemini 3.6+ Flash, static elsewhere) | agentic | static
+       // "agentic_chunk_size_seconds": 600, // Longest clip one agentic sub-agent takes; static mode keeps chunk_size_seconds (60)
+       // "agentic_call_timeout_seconds": 300 // Hard timeout for one agentic sub-agent response
